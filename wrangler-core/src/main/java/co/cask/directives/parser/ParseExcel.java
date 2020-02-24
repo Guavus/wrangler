@@ -47,12 +47,7 @@ import java.io.ByteArrayInputStream;
 import java.nio.ByteBuffer;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.TreeMap;
+import java.util.*;
 
 /**
  * A step to parse Excel files.
@@ -133,26 +128,21 @@ public class ParseExcel implements Directive {
             }
 
             Map<Integer, String> columnNames = new TreeMap<>();
-            Iterator<org.apache.poi.ss.usermodel.Row> it = excelsheet.iterator();
             int rows = 0;
-            while (it.hasNext()) {
-              org.apache.poi.ss.usermodel.Row row = it.next();
-              Iterator<Cell> cellIterator = row.cellIterator();
+            for(int rowNum = excelsheet.getFirstRowNum(); rowNum <= excelsheet.getLastRowNum(); rowNum++) {
+              org.apache.poi.ss.usermodel.Row row = excelsheet.getRow(rowNum);
               if(checkIfRowIsEmpty(row)) {
+                LOG.error("Skipping empty row: {}", rowNum + 1);
                 continue;
               }
 
               Row newRow = new Row();
               newRow.addOrSet("fwd", rows);
-              
-              if (firstRowAsHeader && rows > 0) {
-                for (Entry<Integer, String> entry: columnNames.entrySet()) {
-                  newRow.addOrSet(entry.getValue(), "");
-                }
-              }
 
-              while (cellIterator.hasNext()) {
-                Cell cell = cellIterator.next();
+              // Using for loop instead of Cell Iterator because Iterator skips the null/blank cells.
+              for(int rowIndex = row.getFirstCellNum(); rowIndex < row.getLastCellNum(); rowIndex++) {
+                // A new, blank cell is created for missing cells instead of null.
+                Cell cell = row.getCell(rowIndex, org.apache.poi.ss.usermodel.Row.MissingCellPolicy.CREATE_NULL_AS_BLANK);
                 String name = columnName(cell.getAddress().getColumn());
                 if (firstRowAsHeader && rows > 0) {
                   String value = columnNames.get(cell.getAddress().getColumn());
@@ -187,7 +177,8 @@ public class ParseExcel implements Directive {
                     break;
 
                   case STRING:
-                    newRow.addOrSet(name, cell.getStringCellValue());
+                  case BLANK:
+                    newRow.add(name, cell.getStringCellValue());
                     value = cell.getStringCellValue();
                     break;
 
@@ -202,6 +193,10 @@ public class ParseExcel implements Directive {
                 }
 
                 if (rows == 0 && firstRowAsHeader) {
+                  if("".equals(value)) {
+                    // Renaming the blank column to "header_{column_index}"
+                    value = "header_" + cell.getAddress().getColumn();
+                  }
                   columnNames.put(cell.getAddress().getColumn(), value);
                 }
               }
