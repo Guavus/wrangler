@@ -51,6 +51,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.TreeMap;
 
 /**
@@ -142,7 +143,13 @@ public class ParseExcel implements Directive {
               }
 
               Row newRow = new Row();
-              newRow.add("fwd", rows);
+              newRow.addOrSet("fwd", rows);
+              
+              if (firstRowAsHeader && rows > 0) {
+                for (Entry<Integer, String> entry: columnNames.entrySet()) {
+                  newRow.addOrSet(entry.getValue(), "");
+                }
+              }
 
               while (cellIterator.hasNext()) {
                 Cell cell = cellIterator.next();
@@ -164,19 +171,32 @@ public class ParseExcel implements Directive {
                     if (HSSFDateUtil.isCellDateFormatted(cell)) {
                       if(excelDataType) {
                         ZonedDateTime zonedDateTime = ZonedDateTime.ofInstant(cell.getDateCellValue().toInstant(),ZoneId.systemDefault());
-                        newRow.add(name, zonedDateTime);
+                        newRow.addOrSet(name, zonedDateTime);
                       }else{
-                        newRow.add(name, cell.getDateCellValue().toString());
+                        newRow.addOrSet(name, cell.getDateCellValue().toString());
                       }
                       value = cell.getDateCellValue().toString();
                     } else {
-                      newRow.add(name, cell.getNumericCellValue());
+                      if(excelDataType) {
+                        newRow.addOrSet(name, cell.getNumericCellValue());
+                      }else{
+                        newRow.addOrSet(name, String.valueOf(cell.getNumericCellValue()));
+                      }
                       value = String.valueOf(cell.getNumericCellValue());
                     }
                     break;
 
+                  case STRING:
+                    newRow.addOrSet(name, cell.getStringCellValue());
+                    value = cell.getStringCellValue();
+                    break;
+
                   case BOOLEAN:
-                    newRow.add(name, cell.getBooleanCellValue());
+                    if(excelDataType){
+                      newRow.addOrSet(name, cell.getBooleanCellValue());
+                    }else {
+                      newRow.addOrSet(name, String.valueOf(cell.getBooleanCellValue()));
+                    }
                     value = String.valueOf(cell.getBooleanCellValue());
                     break;
                 }
@@ -212,6 +232,45 @@ public class ParseExcel implements Directive {
       }
     }
     return results;
+  }
+
+  private String getFormulaValue(CellValue cellValue, Row newRow, String name, Cell cell) {
+      String value = "";
+      if (cellValue == null) {
+        return null;
+      }
+      
+	  switch (cellValue.getCellTypeEnum()) {
+      case STRING:
+        newRow.addOrSet(name, cellValue.getStringValue());
+        value = cellValue.getStringValue();
+        break;
+
+      case NUMERIC:
+        if (HSSFDateUtil.isValidExcelDate(cellValue.getNumberValue()) && HSSFDateUtil.isInternalDateFormat(cell.getCellStyle().getDataFormat())) {
+          value = HSSFDateUtil.getJavaDate(cellValue.getNumberValue()).toString();
+          newRow.addOrSet(name, value);
+    	} else {
+          if(excelDataType) {
+            newRow.addOrSet(name, cellValue.getNumberValue());
+          }else{
+            newRow.addOrSet(name, String.valueOf(cellValue.getNumberValue()));
+          }
+          value = String.valueOf(cellValue.getNumberValue());
+    	}
+        break;
+      case BOOLEAN:
+        if(excelDataType){
+          newRow.addOrSet(name, cellValue.getBooleanValue());
+        }else {
+          newRow.addOrSet(name, String.valueOf(cellValue.getBooleanValue()));
+        }
+        value = String.valueOf(cellValue.getBooleanValue());
+        break;
+      default:
+        break;
+    }
+    return value;
   }
 
   private boolean checkIfRowIsEmpty(org.apache.poi.ss.usermodel.Row row) {
