@@ -48,6 +48,8 @@ import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayInputStream;
 import java.nio.ByteBuffer;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -175,7 +177,8 @@ public class ParseExcel implements Directive {
                   case NUMERIC:
                     if (HSSFDateUtil.isCellDateFormatted(cell)) {
                       if(excelDataType) {
-                        newRow.addOrSet(name, cell.getDateCellValue());
+                        ZonedDateTime zonedDateTime = ZonedDateTime.ofInstant(cell.getDateCellValue().toInstant(),ZoneId.systemDefault());
+                        newRow.addOrSet(name, zonedDateTime);
                       }else{
                         newRow.addOrSet(name, cell.getDateCellValue().toString());
                       }
