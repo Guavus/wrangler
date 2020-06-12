@@ -19,7 +19,7 @@
 
   <groupId>co.cask.wrangler</groupId>
   <artifactId>wrangler</artifactId>
-  <version>3.2.0_5.1.217</version>
+  <version>3.2.0_5.1.2171</version>
   <name>Wrangler</name>
   <packaging>pom</packaging>
   <description>An interactive tool for data cleansing and transformation.</description>
@@ -75,12 +75,12 @@
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <cdap.version>5.1.217</cdap.version>
+    <cdap.version>5.1.2171</cdap.version>
     <commons-jexl.version>3.0</commons-jexl.version>
     <commons-csv.version>1.4</commons-csv.version>
     <commons-lang.version>2.6</commons-lang.version>
     <commons-lang3.version>3.5</commons-lang3.version>
-    <guava.version>20.0</guava.version>
+    <guava.version>28.0-jre</guava.version>
     <unix4j.version>0.4</unix4j.version>
     <json-path.version>2.2.0</json-path.version>
     <hl7.version>2.2</hl7.version>
@@ -107,7 +107,7 @@
     <aws.sdk.version>1.11.133</aws.sdk.version>
     <poi.version>3.16</poi.version>
     <!--hadoop.version>2.4.0</hadoop.version-->
-    <hadoop.version>3.1.1.3.1.0.0-78</hadoop.version>
+    <hadoop.version>3.1.1.3.1.4.0-315</hadoop.version>
     <antlr4.version>4.7</antlr4.version>
     <antlr4-maven-plugin.version>4.7</antlr4-maven-plugin.version>
     <junit.version>4.12</junit.version>
