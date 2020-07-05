@@ -38,6 +38,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.poi.hssf.usermodel.HSSFDateUtil;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellType;
+import org.apache.poi.ss.usermodel.CellValue;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.slf4j.Logger;
@@ -62,6 +63,7 @@ public class ParseExcel implements Directive {
   private String column;
   private String sheet;
   private boolean firstRowAsHeader = false;
+  private boolean excelDataType = false;
 
   @Override
   public UsageDefinition define() {
@@ -69,6 +71,8 @@ public class ParseExcel implements Directive {
     builder.define("column", TokenType.COLUMN_NAME);
     builder.define("sheet", TokenType.TEXT, Optional.TRUE);
     builder.define("first-row-as-header", TokenType.BOOLEAN, Optional.TRUE);
+    builder.define("use-excel-datatype", TokenType.BOOLEAN, Optional.FALSE);
+
     return builder.build();
   }
 
@@ -82,6 +86,10 @@ public class ParseExcel implements Directive {
     }
     if (args.contains("first-row-as-header")) {
       this.firstRowAsHeader = ((Boolean) args.value("first-row-as-header").value());
+    }
+
+    if (args.contains("use-excel-datatype")) {
+      this.excelDataType = ((Boolean) args.value("use-excel-datatype").value());
     }
   }
 
@@ -152,11 +160,6 @@ public class ParseExcel implements Directive {
                 }
                 String value = "";
                 switch (cell.getCellTypeEnum()) {
-                  case STRING:
-                    newRow.add(name, cell.getStringCellValue());
-                    value = cell.getStringCellValue();
-                    break;
-
                   case NUMERIC:
                     if (HSSFDateUtil.isCellDateFormatted(cell)) {
                       if(excelDataType) {
