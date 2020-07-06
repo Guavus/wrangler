@@ -38,6 +38,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.poi.hssf.usermodel.HSSFDateUtil;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellType;
+import org.apache.poi.ss.usermodel.CellValue;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.slf4j.Logger;
@@ -45,11 +46,9 @@ import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayInputStream;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.util.*;
 
 /**
  * A step to parse Excel files.
@@ -64,6 +63,7 @@ public class ParseExcel implements Directive {
   private String column;
   private String sheet;
   private boolean firstRowAsHeader = false;
+  private boolean excelDataType = false;
 
   @Override
   public UsageDefinition define() {
@@ -71,6 +71,8 @@ public class ParseExcel implements Directive {
     builder.define("column", TokenType.COLUMN_NAME);
     builder.define("sheet", TokenType.TEXT, Optional.TRUE);
     builder.define("first-row-as-header", TokenType.BOOLEAN, Optional.TRUE);
+    builder.define("use-excel-datatype", TokenType.BOOLEAN, Optional.FALSE);
+
     return builder.build();
   }
 
@@ -84,6 +86,10 @@ public class ParseExcel implements Directive {
     }
     if (args.contains("first-row-as-header")) {
       this.firstRowAsHeader = ((Boolean) args.value("first-row-as-header").value());
+    }
+
+    if (args.contains("use-excel-datatype")) {
+      this.excelDataType = ((Boolean) args.value("use-excel-datatype").value());
     }
   }
 
@@ -130,20 +136,21 @@ public class ParseExcel implements Directive {
             }
 
             Map<Integer, String> columnNames = new TreeMap<>();
-            Iterator<org.apache.poi.ss.usermodel.Row> it = excelsheet.iterator();
             int rows = 0;
-            while (it.hasNext()) {
-              org.apache.poi.ss.usermodel.Row row = it.next();
-              Iterator<Cell> cellIterator = row.cellIterator();
+            for(int rowNum = excelsheet.getFirstRowNum(); rowNum <= excelsheet.getLastRowNum(); rowNum++) {
+              org.apache.poi.ss.usermodel.Row row = excelsheet.getRow(rowNum);
               if(checkIfRowIsEmpty(row)) {
+                LOG.error("Skipping empty row: {}", rowNum + 1);
                 continue;
               }
 
               Row newRow = new Row();
-              newRow.add("fwd", rows);
+              newRow.addOrSet("fwd", rows);
 
-              while (cellIterator.hasNext()) {
-                Cell cell = cellIterator.next();
+              // Using for loop instead of Cell Iterator because Iterator skips the null/blank cells.
+              for(int rowIndex = row.getFirstCellNum(); rowIndex < row.getLastCellNum(); rowIndex++) {
+                // A new, blank cell is created for missing cells instead of null.
+                Cell cell = row.getCell(rowIndex, org.apache.poi.ss.usermodel.Row.MissingCellPolicy.CREATE_NULL_AS_BLANK);
                 String name = columnName(cell.getAddress().getColumn());
                 if (firstRowAsHeader && rows > 0) {
                   String value = columnNames.get(cell.getAddress().getColumn());
@@ -153,28 +160,46 @@ public class ParseExcel implements Directive {
                 }
                 String value = "";
                 switch (cell.getCellTypeEnum()) {
-                  case STRING:
-                    newRow.add(name, cell.getStringCellValue());
-                    value = cell.getStringCellValue();
-                    break;
-
                   case NUMERIC:
                     if (HSSFDateUtil.isCellDateFormatted(cell)) {
-                      newRow.add(name, cell.getDateCellValue());
+                      if(excelDataType) {
+                        ZonedDateTime zonedDateTime = ZonedDateTime.ofInstant(cell.getDateCellValue().toInstant(),ZoneId.systemDefault());
+                        newRow.addOrSet(name, zonedDateTime);
+                      }else{
+                        newRow.addOrSet(name, cell.getDateCellValue().toString());
+                      }
                       value = cell.getDateCellValue().toString();
                     } else {
-                      newRow.add(name, cell.getNumericCellValue());
+                      if(excelDataType) {
+                        newRow.addOrSet(name, cell.getNumericCellValue());
+                      }else{
+                        newRow.addOrSet(name, String.valueOf(cell.getNumericCellValue()));
+                      }
                       value = String.valueOf(cell.getNumericCellValue());
                     }
                     break;
 
+                  case STRING:
+                  case BLANK:
+                    newRow.add(name, cell.getStringCellValue());
+                    value = cell.getStringCellValue();
+                    break;
+
                   case BOOLEAN:
-                    newRow.add(name, cell.getBooleanCellValue());
+                    if(excelDataType){
+                      newRow.addOrSet(name, cell.getBooleanCellValue());
+                    }else {
+                      newRow.addOrSet(name, String.valueOf(cell.getBooleanCellValue()));
+                    }
                     value = String.valueOf(cell.getBooleanCellValue());
                     break;
                 }
 
                 if (rows == 0 && firstRowAsHeader) {
+                  if("".equals(value)) {
+                    // Renaming the blank column to "header_{column_index}"
+                    value = "header_" + cell.getAddress().getColumn();
+                  }
                   columnNames.put(cell.getAddress().getColumn(), value);
                 }
               }
@@ -205,6 +230,45 @@ public class ParseExcel implements Directive {
       }
     }
     return results;
+  }
+
+  private String getFormulaValue(CellValue cellValue, Row newRow, String name, Cell cell) {
+      String value = "";
+      if (cellValue == null) {
+        return null;
+      }
+      
+	  switch (cellValue.getCellTypeEnum()) {
+      case STRING:
+        newRow.addOrSet(name, cellValue.getStringValue());
+        value = cellValue.getStringValue();
+        break;
+
+      case NUMERIC:
+        if (HSSFDateUtil.isValidExcelDate(cellValue.getNumberValue()) && HSSFDateUtil.isInternalDateFormat(cell.getCellStyle().getDataFormat())) {
+          value = HSSFDateUtil.getJavaDate(cellValue.getNumberValue()).toString();
+          newRow.addOrSet(name, value);
+    	} else {
+          if(excelDataType) {
+            newRow.addOrSet(name, cellValue.getNumberValue());
+          }else{
+            newRow.addOrSet(name, String.valueOf(cellValue.getNumberValue()));
+          }
+          value = String.valueOf(cellValue.getNumberValue());
+    	}
+        break;
+      case BOOLEAN:
+        if(excelDataType){
+          newRow.addOrSet(name, cellValue.getBooleanValue());
+        }else {
+          newRow.addOrSet(name, String.valueOf(cellValue.getBooleanValue()));
+        }
+        value = String.valueOf(cellValue.getBooleanValue());
+        break;
+      default:
+        break;
+    }
+    return value;
   }
 
   private boolean checkIfRowIsEmpty(org.apache.poi.ss.usermodel.Row row) {
